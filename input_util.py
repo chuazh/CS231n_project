@@ -1,9 +1,26 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, sampler, Dataset
+import os
+import numpy
+import torchvision.datasets as dset
+import torchvision.transforms as T
+import torchvision.models
+import glob
+from PIL import Image
 import cv2
 import numpy as np
 import pickle
+from natsort import humansorted
+import pdb
 
 def collect_video_framecount(action,subject,trial_num):
-    
+    '''
+    This function takes the video and splits it into frames
+    Inputs:
+    Outputs:
+    '''
     action_dict = {'KT':'Knot_Tying','S':'Suturing','NP': 'Needle_Passing'}
     
     act = action_dict[action]
@@ -78,8 +95,8 @@ def collect_video_sample(action,subject,trial_num,num_frames):
     
     # only take cols 38-49 (slave left) and 57-68 (slave right)
     
-    dataL = data[:count,38:49]
-    dataR = data[:count,57:68]
+    dataL = data[:count,38:50]
+    dataR = data[:count,57:69]
     
     out = np.hstack((dataL,dataR))
     
@@ -87,46 +104,25 @@ def collect_video_sample(action,subject,trial_num,num_frames):
     
     return out
 
-# functions to downsize the images and compile them into a dataset
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torch.utils.data import sampler
-from torch.utils.data import Dataset
-import os
-
-import torchvision.datasets as dset
-import torchvision.transforms as T
-import glob
-from PIL import Image
-import cv2
-import numpy as np
-import pickle
-
-import pdb
-
 class JIGSAWDataset(Dataset):
 
-    def __init__(self, y, root_dir, transform=None):
+    def __init__(self, y, sortedFilelist , transform=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
-            root_dir (string): Directory with all the images.
+            sortedFilelist (string): sorted list of filenames.
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
         self.labels = y
-        self.root_dir = root_dir
+        self.sortedlist = sortedFilelist
         self.transform = transform
 
     def __len__(self):
         return self.y.shape[0]
         
     def __getitem__(self, idx): 
-        file_list = glob.glob('data/*.png')
-        img_name = file_list[idx]
+        img_name = self.sortedlist[idx]
         #print('opening image ' +  img_name)
         image = Image.open(img_name,'r')
         label = self.labels[idx,:]
@@ -136,55 +132,46 @@ class JIGSAWDataset(Dataset):
 
         return sample
 
-def load_dataset():
+def load_dataset(input_size):
     
     data_path = 'data'
     picklefile = open("kinematics", "rb" )
     
     num_files = len(next(os.walk('data'))[2]) #dir is your directory path as string
-    print(num_files)
+    print('num image files: %d' % num_files)
     
     trans = T.Compose([
-                T.Resize((60,80), interpolation=2),
-                T.ToTensor()])
+                T.CenterCrop(240),
+                T.Resize((input_size), interpolation=2),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
     transy = T.Compose([T.ToTensor()])
 
     y = pickle.load(picklefile)
-    print(y.shape)
+    print('shape of label data: %dx%d' % (y.shape[0],y.shape[1]))
     picklefile.close()
     
-    dataset = JIGSAWDataset(y,data_path,transform = trans)
+    file_list = glob.glob('data/*.png')
+    sortedlist =  humansorted(file_list)
+    
+    dataset = JIGSAWDataset(y,sortedlist,transform = trans)
     
     train_loader = DataLoader(
         dataset,
-        batch_size=64,
+        batch_size=25,
         num_workers=0,
         shuffle=False,
-        sampler=sampler.SubsetRandomSampler(range(num_files-1000))
+        sampler=sampler.SubsetRandomSampler(range(num_files-2000))
     )
     
     val_loader = DataLoader(
         dataset,
-        batch_size=64,
+        batch_size=25,
         num_workers=0,
         shuffle=False,
-        sampler=sampler.SubsetRandomSampler(range(num_files-1000,num_files))
+        sampler=sampler.SubsetRandomSampler(range(num_files-2000,num_files))
     )
     
     return train_loader,val_loader
     
-loader_train,loader_val = load_dataset()
-
-
-USE_GPU = True
-dtype = torch.float32 # we will be using float throughout this tutorial
-
-if USE_GPU and torch.cuda.is_available():
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
-
-# Constant to control how frequently we print train loss
-print_every = 100
-
-print('using device:', device)
