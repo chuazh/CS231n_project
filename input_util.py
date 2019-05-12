@@ -119,7 +119,7 @@ class JIGSAWDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return self.y.shape[0]
+        return self.labels.shape[0]
         
     def __getitem__(self, idx): 
         img_name = self.sortedlist[idx]
@@ -155,14 +155,15 @@ def load_dataset(input_size):
     file_list = glob.glob('data/*.png')
     sortedlist =  humansorted(file_list)
     
-    dataset = JIGSAWDataset(y,sortedlist,transform = trans)
+    dataset = JIGSAWDataset(y,sortedlist[0:4000],transform = trans)
     
     train_loader = DataLoader(
         dataset,
         batch_size=25,
         num_workers=0,
         shuffle=False,
-        sampler=sampler.SubsetRandomSampler(range(num_files-2000))
+        #sampler=sampler.SubsetRandomSampler(range(num_files-2000))
+        sampler=sampler.SubsetRandomSampler(range(2000))
     )
     
     val_loader = DataLoader(
@@ -170,7 +171,8 @@ def load_dataset(input_size):
         batch_size=25,
         num_workers=0,
         shuffle=False,
-        sampler=sampler.SubsetRandomSampler(range(num_files-2000,num_files))
+        #sampler=sampler.SubsetRandomSampler(range(num_files-2000,num_files))
+        sampler=sampler.SubsetRandomSampler(range(2000,4000))
     )
     
     return train_loader,val_loader
