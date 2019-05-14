@@ -10,7 +10,7 @@ import os
 import copy
 import numpy as np
 
-def check_accuracy_vis(loader, model, device, plot=True):
+def check_accuracy_vis(prefix,loader, model, device, plot=True):
 
     print('Checking accuracy on sequential validation set')
 
@@ -41,8 +41,8 @@ def check_accuracy_vis(loader, model, device, plot=True):
         
         #save our results
         print('saving our results...')
-        np.savetxt('vis_scores.dat', score_array, delimiter=',')   # X is an array
-        np.savetxt('vis_gt.dat', gt_array, delimiter=',')   # X is an array    
+        np.savetxt(prefix+'_vis_scores.dat', score_array, delimiter=',')   # X is an array
+        np.savetxt(prefix+'_vis_gt.dat', gt_array, delimiter=',')   # X is an array    
 
         print('MSE loss is: %f ' % loss)
         plt.show()
