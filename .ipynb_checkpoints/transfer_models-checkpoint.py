@@ -10,13 +10,15 @@ import os
 import copy
 import numpy as np
 
-def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25, is_inception=False):
+
+def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25, print_every = 100 ,is_inception=False):
     since = time.time()
 
-    val_acc_history = []
+    val_loss_history = []
+    train_loss_history = []
 
     best_model_wts = copy.deepcopy(model.state_dict())
-    best_acc = 0.0
+    best_loss = 10000000000.0 # some large number
 
     for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -31,12 +33,15 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
 
             running_loss = 0.0
             running_corrects = 0
-
+            num_iter = 0
+            
             # Iterate over data.
             for inputs, labels in dataloaders[phase]:
                 inputs = inputs.to(device,dtype=torch.float)
                 labels = labels.to(device,dtype= torch.float)
-
+                
+                num_iter +=1
+                
                 # zero the parameter gradients
                 optimizer.zero_grad()
 
@@ -57,8 +62,10 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
                         outputs = model(inputs)
                         loss = criterion(outputs, labels)
 
-                    _, preds = torch.max(outputs, 1)
-
+                    #_, preds = torch.max(outputs, 1) dont need this because we are not doing classification
+                    if num_iter%print_every == 0:
+                        print('loss for iteration %d: %.6f' % (num_iter,loss),flush=True)
+                    
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
@@ -66,29 +73,32 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
 
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
+                #running_corrects += torch.sum(preds == labels.data)
 
-            epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
+            #epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            epoch_loss = running_loss / (len(dataloaders[phase].dataset)/64)
+            #epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+            print('{} Loss: {:.4f}'.format(phase, epoch_loss))
 
             # deep copy the model
-            if phase == 'val' and epoch_acc > best_acc:
-                best_acc = epoch_acc
+            if phase == 'val' and epoch_loss < best_loss:
+                best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
             if phase == 'val':
-                val_acc_history.append(epoch_acc)
+                val_loss_history.append(epoch_loss)
+            if phase == 'train':
+                train_loss_history.append(epoch_loss)
 
         print()
 
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(time_elapsed // 60, time_elapsed % 60))
-    print('Best val Acc: {:4f}'.format(best_acc))
+    print('Best val Acc: {:4f}'.format(best_loss))
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    return model, val_acc_history
+    return model, val_loss_history, train_loss_history
 
 def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
@@ -102,12 +112,32 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
     input_size = 0
 
     if model_name == "resnet":
-        """ Resnet18
+        """ Resnet50
         """
-        model_ft = models.resnet18(pretrained=use_pretrained)
-        set_parameter_requires_grad(model_ft, feature_extract)
-        num_ftrs = model_ft.fc.in_features
-        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model_res = models.resnet50(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_res, feature_extract)
+        num_ftrs = model_res.fc.in_features
+        
+        out_features = 2048*4
+        hidden_sizes = (out_features*2,out_features)
+        
+        model_res.fc = nn.Linear(num_ftrs, out_features)
+        
+        # add additional FC layers to better utilize the extracted features.
+        out1,out2 = hidden_sizes
+        model_ft = nn.Sequential(
+            model_res,
+            nn.BatchNorm1d(out_features),
+            nn.ReLU(),
+            nn.Linear(out_features,out1),
+            nn.BatchNorm1d(out1),
+            nn.ReLU(),
+            nn.Linear(out1,out2),
+            nn.BatchNorm1d(out2),
+            nn.ReLU(),
+            nn.Linear(out2,num_classes),
+        )
+
         input_size = 224
 
     elif model_name == "alexnet":

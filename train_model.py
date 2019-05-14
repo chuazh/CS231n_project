@@ -71,11 +71,11 @@ torch.save(model_ft.state_dict(), f)
 f.close()
 
 f = open("train_loss.dat",'wb')
-index_dict = pickle.dump(train_hist,f)
+pickle.dump(train_hist,f)
 f.close()
 
 f = open("val_loss.dat",'wb')
-index_dict = pickle.dump(hist,f)
+pickle.dump(hist,f)
 f.close()
 
 vis.check_accuracy_vis(loader_seq, model,plot = False) # don't plot our data

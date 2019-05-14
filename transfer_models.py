@@ -10,10 +10,12 @@ import os
 import copy
 import numpy as np
 
+
 def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25, print_every = 100 ,is_inception=False):
     since = time.time()
 
     val_loss_history = []
+    train_loss_history = []
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = 10000000000.0 # some large number
@@ -62,7 +64,7 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
 
                     #_, preds = torch.max(outputs, 1) dont need this because we are not doing classification
                     if num_iter%print_every == 0:
-                        print('loss for iteration %d: %.6f' % (num_iter,loss))
+                        print('loss for iteration %d: %.6f' % (num_iter,loss),flush=True)
                     
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -73,7 +75,8 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
                 running_loss += loss.item() * inputs.size(0)
                 #running_corrects += torch.sum(preds == labels.data)
 
-            epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            #epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            epoch_loss = running_loss / (len(dataloaders[phase].dataset)/64)
             #epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
             print('{} Loss: {:.4f}'.format(phase, epoch_loss))
@@ -84,6 +87,8 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
                 best_model_wts = copy.deepcopy(model.state_dict())
             if phase == 'val':
                 val_loss_history.append(epoch_loss)
+            if phase == 'train':
+                train_loss_history.append(epoch_loss)
 
         print()
 
@@ -93,26 +98,50 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    return model, val_loss_history
+    return model, val_loss_history, train_loss_history
 
 def set_parameter_requires_grad(model, feature_extracting):
     if feature_extracting:
         for param in model.parameters():
             param.requires_grad = False
 
-def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
+def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True, is_deep=True):
     # Initialize these variables which will be set in this if statement. Each of these
     #   variables is model specific.
     model_ft = None
     input_size = 0
 
     if model_name == "resnet":
-        """ Resnet18
+        """ Resnet50
         """
-        model_ft = models.resnet50(pretrained=use_pretrained)
-        set_parameter_requires_grad(model_ft, feature_extract)
-        num_ftrs = model_ft.fc.in_features
-        model_ft.fc = nn.Linear(num_ftrs, num_classes)
+        model_res = models.resnet50(pretrained=use_pretrained)
+        set_parameter_requires_grad(model_res, feature_extract)
+        num_ftrs = model_res.fc.in_features
+        
+        if is_deep:
+            out_features = 2048*4
+            hidden_sizes = (out_features*2,out_features)
+            # add additional FC layers to better utilize the extracted features.
+            out1,out2 = hidden_sizes
+            model_ft = nn.Sequential(
+            model_res,
+            nn.BatchNorm1d(out_features),
+            nn.ReLU(),
+            nn.Linear(out_features,out1),
+            nn.BatchNorm1d(out1),
+            nn.ReLU(),
+            nn.Linear(out1,out2),
+            nn.BatchNorm1d(out2),
+            nn.ReLU(),
+            nn.Linear(out2,num_classes)
+        )
+        else:
+            out_features
+        
+        model_res.fc = nn.Linear(num_ftrs, out_features)
+        
+
+
         input_size = 224
 
     elif model_name == "alexnet":
