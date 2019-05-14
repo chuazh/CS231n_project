@@ -73,6 +73,12 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
 
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
+                if num_iter%100==0:
+                    if phase == 'val':
+                        val_loss_history.append(running_loss/num_iter)
+                    if phase == 'train':
+                        train_loss_history.append(running_loss/num_iter)
+                    
                 #running_corrects += torch.sum(preds == labels.data)
 
             #epoch_loss = running_loss / len(dataloaders[phase].dataset)
@@ -85,10 +91,7 @@ def train_model(model, dataloaders, device, criterion, optimizer, num_epochs=25,
             if phase == 'val' and epoch_loss < best_loss:
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
-            if phase == 'val':
-                val_loss_history.append(epoch_loss)
-            if phase == 'train':
-                train_loss_history.append(epoch_loss)
+
 
         print()
 
@@ -105,7 +108,7 @@ def set_parameter_requires_grad(model, feature_extracting):
         for param in model.parameters():
             param.requires_grad = False
 
-def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
+def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True, is_deep=True):
     # Initialize these variables which will be set in this if statement. Each of these
     #   variables is model specific.
     model_ft = None
@@ -118,14 +121,14 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
         set_parameter_requires_grad(model_res, feature_extract)
         num_ftrs = model_res.fc.in_features
         
-        out_features = 2048*4
-        hidden_sizes = (out_features*2,out_features)
-        
-        model_res.fc = nn.Linear(num_ftrs, out_features)
-        
-        # add additional FC layers to better utilize the extracted features.
-        out1,out2 = hidden_sizes
-        model_ft = nn.Sequential(
+        if is_deep:
+            out_features = 2048*4
+            hidden_sizes = (out_features*2,out_features)
+            # add additional FC layers to better utilize the extracted features.
+            out1,out2 = hidden_sizes
+            
+            model_res.fc = nn.Linear(num_ftrs, out_features)
+            model_ft = nn.Sequential(
             model_res,
             nn.BatchNorm1d(out_features),
             nn.ReLU(),
@@ -135,9 +138,13 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
             nn.Linear(out1,out2),
             nn.BatchNorm1d(out2),
             nn.ReLU(),
-            nn.Linear(out2,num_classes),
+            nn.Linear(out2,num_classes)
         )
-
+        else:
+            out_features = num_classes
+            model_res.fc = nn.Linear(num_ftrs, out_features)
+            model_ft = model_res
+        
         input_size = 224
 
     elif model_name == "alexnet":
