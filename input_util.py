@@ -162,16 +162,32 @@ class JIGSAWDataset(Dataset):
         
     def __getitem__(self, idx): 
         img_name = self.sortedlist[idx]
+        trial_info = img_name[13:] + '_' + img_name[5] + '00' + img_name[7]
         #print('opening image ' +  img_name)
         image = Image.open(img_name,'r')
         label = self.labels[idx,:]
         if self.transform:
-            image = self.transform(image)
-        sample =  (image,label)
+        image = self.transform(image)
+        sample =  (image,label,trial_info)
 
         return sample
 
 def load_dataset(input_size,index_dict,num_train_trials=3,num_val_trials=3):
+    
+    tasks = ['KT', 'NP', 'S']
+        
+    train_list['KT'] = [['B','C','D','E','F','G','I'],[[1,2,3],[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4],[0,1,2,3,4],[1,2,4]]]
+    test_list['KT'] = [['C','E','H'],[[0],[0],[2,3,4]]]
+    val_list['KT'] = [['B','D','F','G'],[[0],[0],[0],[0]]]
+    
+    trian_list['NP'] = [['B','C','D','E','F','I'],[[0,1,2,3],[1,2,3,4],[0,1,2,3,4],[2,3,4],[2,3],[2,3,4]]]
+    test_list['NP'] = [['F','H'],[[0],[1,3,4]]]
+    val_list['NP'] = [['C','E','I'],[[0],[0],[1]]]
+    
+    train_list['S'] = [['B','C','D','E','F','G','I'],[[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4],[0,1,2,3,4],[1,2,3,4],[0,1,2,3,4]]]
+    test_list['S'] = [['G','H'],[[0],[0,2,3,4]]]
+    val_list['S'] = [['B','C','D','E'],[[0],[0],[0],[0]]]
+    
     
     data_path = 'data'
     picklefile = open("kinematics", "rb" )
@@ -195,12 +211,39 @@ def load_dataset(input_size,index_dict,num_train_trials=3,num_val_trials=3):
     sortedlist =  humansorted(file_list)
     
     dataset = JIGSAWDataset(y,sortedlist,transform = trans)
-    range_total = random.sample(list(index_dict.values()), k=(num_train_trials + num_val_trials))
-    range_train = [range_total[i] for i in range(num_train_trials)]
-    range_train = sum(range_train,[])
-    range_val = [range_total[i] for i in range(num_train_trials,num_train_trials+num_val_trials)]
-    range_val = sum(range_val,[])
-    sortedlist_seq = [ sortedlist[i] for i in range_val]
+    
+    range_train = []
+    range_test = []
+    range_val = []
+    
+    for task in tasks:
+        # train
+        subj = train_list[task][0]
+        trial = train_list[task][1]
+        for i in range(len(subj)):
+            for j in trial[i]:
+                range_train.extend(index_dict[task + '_' + subj[i] + '00' + str(j+1)])
+        # test
+        subj = test_list[task][0]
+        trial = test_list[task][1]
+        for i in range(len(subj)):
+            for j in trial[i]:
+                range_test.extend(index_dict[task + '_' + subj[i] + '00' + str(j+1)])
+        # val
+        subj = val_list[task][0]
+        trial = val_list[task][1]
+        for i in range(len(subj)):
+            for j in trial[i]:
+                range_val.extend(index_dict[task + '_' + subj[i] + '00' + str(j+1)])
+        
+        
+#     range_total = random.sample(list(index_dict.values()), k=(num_train_trials + num_val_trials))
+#     range_train = [range_total[i] for i in range(num_train_trials)]
+#     range_train = sum(range_train,[])
+#     range_val = [range_total[i] for i in range(num_train_trials,num_train_trials+num_val_trials)]
+#     range_val = sum(range_val,[])
+
+    sortedlist_seq = [sortedlist[i] for i in range_val]
     seq_dataset = JIGSAWDataset(y[range_val,:],sortedlist_seq,transform = trans)
     
     train_loader = DataLoader(
@@ -219,6 +262,14 @@ def load_dataset(input_size,index_dict,num_train_trials=3,num_val_trials=3):
         sampler=sampler.SubsetRandomSampler(range_val)
     )
     
+    test_loader = DataLoader(
+        dataset,
+        batch_size=64,
+        num_workers=0,
+        shuffle=False,
+        sampler=sampler.SubsetRandomSampler(range_test)
+    )
+    
     seq_loader = DataLoader(
         seq_dataset,
         batch_size=64,
@@ -227,7 +278,7 @@ def load_dataset(input_size,index_dict,num_train_trials=3,num_val_trials=3):
         sampler=sampler.SequentialSampler(seq_dataset)
     )
     
-    return train_loader,val_loader, seq_loader
+    return train_loader,val_loader,test_loader, seq_loader
     
 # GOT THIS ONLINE, NEED TO FIGURE OUT HOW TO CITE IT https://www.lfd.uci.edu/~gohlke/code/transformations.py.html
 
